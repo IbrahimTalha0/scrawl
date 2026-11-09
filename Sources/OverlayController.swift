@@ -42,14 +42,23 @@ final class OverlayWindow: NSWindow {
 
 @MainActor
 final class OverlayController {
-    private(set) var isDrawing = false
+    enum Mode { case off, drawing, pointer }
+
+    /// `.pointer` = "mouse mode": ink and toolbar stay on screen, clicks go to the apps below.
+    private(set) var mode: Mode = .off
+    var isDrawing: Bool { mode == .drawing }
     private(set) var cursor: NSCursor = .crosshair
-    var onDrawingChanged: ((Bool) -> Void)?
+    var onModeChanged: ((Mode) -> Void)?
 
     private var windows: [OverlayWindow] = []
     private lazy var toolbar = ToolbarPanel(controller: self)
     private var fadeWork: DispatchWorkItem?
-    private var previousApp: NSRunningApplication?
+    /// Last app other than Scrawl that was active, kept up to date by an
+    /// NSWorkspace notification (event-driven, no polling).
+    private var previousApp: NSRunningApplication? = {
+        let front = NSWorkspace.shared.frontmostApplication
+        return front == NSRunningApplication.current ? nil : front
+    }()
     private var seqCounter = 0
     private var board: Board = .none
     private var scrollAccumulator: CGFloat = 0
@@ -66,11 +75,16 @@ final class OverlayController {
         nc.addObserver(forName: .scrawlSettingsChanged, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.settingsChanged() }
         }
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app != NSRunningApplication.current else { return }
+            MainActor.assumeIsolated { self?.previousApp = app }
+        }
         // If the user Cmd-Tabs away while drawing, get out of the way.
         nc.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.isDrawing else { return }
-                self.setDrawing(false, restoreFocus: false)
+                self.setMode(.off, restoreFocus: false)
             }
         }
     }
@@ -116,15 +130,18 @@ final class OverlayController {
 
     // MARK: Mode
 
-    func toggle() { setDrawing(!isDrawing) }
+    /// Global shortcut: drawing → off; off or mouse mode → drawing.
+    func toggle() { setMode(mode == .drawing ? .off : .drawing) }
+    func setDrawing(_ on: Bool) { setMode(on ? .drawing : .off) }
+    func togglePointer() { setMode(mode == .pointer ? .drawing : .pointer) }
 
-    func setDrawing(_ on: Bool, restoreFocus: Bool = true) {
-        guard on != isDrawing else { return }
-        isDrawing = on
+    func setMode(_ new: Mode, restoreFocus: Bool = true) {
+        let old = mode
+        guard new != old else { return }
+        mode = new
 
-        if on {
-            let front = NSWorkspace.shared.frontmostApplication
-            previousApp = front == NSRunningApplication.current ? nil : front
+        switch new {
+        case .drawing:
             for w in windows {
                 w.ignoresMouseEvents = false
                 w.orderFrontRegardless()
@@ -139,26 +156,41 @@ final class OverlayController {
                 guard let self, self.isDrawing else { return }
                 self.cursor.set()
             }
-        } else {
+            // macOS 14+ may decline activation once; retry so Esc and keys work.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                guard let self, self.isDrawing, !NSApp.isActive else { return }
+                NSApp.activate(ignoringOtherApps: true)
+                self.focusWindowUnderMouse()
+                self.cursor.set()
+            }
+
+        case .pointer, .off:
             for w in windows {
                 w.canvas.cancelStroke()
                 w.ignoresMouseEvents = true
             }
-            toolbar.hide()
             setBoard(.none)
-            if Settings.shared.clearOnExit { clearAll() }
+            if new == .off {
+                toolbar.hide()
+                if Settings.shared.clearOnExit { clearAll() }
+            } else if Settings.shared.showToolbar, let screen = NSScreen.withMouse {
+                toolbar.show(on: screen)
+            }
             updateVisibility()
-            NSCursor.arrow.set()
-            if restoreFocus {
+            if old == .drawing { NSCursor.arrow.set() }
+            // Hand focus back to the app the user was in (also covers being
+            // activated by a scrawl:// URL).
+            if restoreFocus, NSApp.isActive {
                 if let app = previousApp, !app.isTerminated {
                     app.activate(options: [])
                 } else {
                     NSApp.deactivate()
                 }
             }
-            previousApp = nil
+            if new == .pointer { Toast.shared.show("Mouse mode: pick a pen to draw again") }
         }
-        onDrawingChanged?(on)
+        toolbar.refresh()
+        onModeChanged?(new)
     }
 
     // MARK: Strokes
@@ -230,7 +262,7 @@ final class OverlayController {
     private func settingsChanged() {
         refreshCursor()
         toolbar.refresh()
-        if isDrawing {
+        if mode != .off {
             let wantToolbar = Settings.shared.showToolbar
             if wantToolbar, !toolbar.isVisible, let screen = windowUnderMouse()?.screen {
                 toolbar.show(on: screen)
@@ -313,6 +345,7 @@ final class OverlayController {
         case "w": toggleBoard(.whiteboard)
         case "b": toggleBoard(.blackboard)
         case "t": s.showToolbar.toggle()
+        case "m", "v": setMode(.pointer)
         default: break
         }
         return true

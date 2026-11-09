@@ -29,6 +29,7 @@ You're studying from slides, explaining something on a call, or recording a tuto
 
 ## Features
 
+- **Mouse mode, one click away.** The cursor button on the toolbar (or `M`) lets clicks go through to your apps while your drawings and the toolbar stay on screen. Click a pen, color or size to draw again.
 - **Temporary ink (auto-fade).** Strokes fade out together shortly after your *last* stroke, so you can write a whole word before it vanishes. Press `F` to switch to persistent ink.
 - **6 tools:** pen, highlighter, line, arrow, rectangle and ellipse. Hold `Shift` for 45° lines, squares and circles.
 - **8 colors** and adjustable stroke size (`[` `]` or scroll).
@@ -37,7 +38,7 @@ You're studying from slides, explaining something on a call, or recording a tuto
 - **Works everywhere:** all Spaces, full-screen apps, Keynote / PowerPoint / PDF presentations, and every connected display.
 - **Global hotkey** that needs no Accessibility or Input Monitoring permission.
 - **Menu bar only**, with no Dock icon and no windows in your way.
-- **URL scheme** for Shortcuts, Raycast, Alfred and Stream Deck: `scrawl://toggle`, `scrawl://start`, `scrawl://stop`, `scrawl://clear`, `scrawl://undo`.
+- **URL scheme** for Shortcuts, Raycast, Alfred and Stream Deck: `scrawl://toggle`, `scrawl://start`, `scrawl://stop`, `scrawl://mouse`, `scrawl://clear`, `scrawl://undo`.
 - **Launch at login** (macOS 13+).
 
 <p align="center">
@@ -93,11 +94,12 @@ The global shortcut can be changed from the menu bar icon (`⌃⇧D`, `⌥⇧D`,
 
 | Global | |
 |---|---|
-| `⌃⇧D` | Start / stop drawing |
+| `⌃⇧D` | Start / stop drawing (from mouse mode: back to drawing) |
 | `⌃⇧C` | Clear all drawings (works even when not drawing) |
 
 | While drawing | |
 |---|---|
+| `M` | Mouse mode: click through, ink and toolbar stay |
 | `P` `H` `L` `A` `R` `O` | Pen, Highlighter, Line, Arrow, Rectangle, Ellipse |
 | `1` – `8` | Red, Orange, Yellow, Green, Blue, Purple, White, Black |
 | `[` / `]` or scroll | Thinner / thicker |
@@ -108,6 +110,8 @@ The global shortcut can be changed from the menu bar icon (`⌃⇧D`, `⌥⇧D`,
 | `W` / `B` | Whiteboard / Blackboard background |
 | `T` | Show / hide the toolbar |
 | `Esc` | Stop drawing (cancels the current stroke first) |
+
+Need to click something mid-explanation? Hit the **cursor button** on the toolbar (or `M`). The canvas steps aside, so you can click, scroll and type in any app while your annotations stay visible. Click any pen, color or size on the toolbar (or press `⌃⇧D`) to keep drawing. The toolbar's ✕ closes everything.
 
 When you stop drawing, persistent ink **stays on screen** and you can click through it normally. Clear it with `⌃⇧C`, or turn on *Clear When Drawing Stops* in the menu.
 

@@ -78,6 +78,7 @@ final class ToolbarPanel: NSPanel {
     private var toolButtons: [Tool: NSButton] = [:]
     private var sizeDots: [SizeDotView] = []
     private var fadeButton: NSButton!
+    private var pointerButton: NSButton!
     private static let originKey = "toolbarOrigin"
 
     init(controller: OverlayController) {
@@ -119,12 +120,17 @@ final class ToolbarPanel: NSPanel {
         for (i, color) in Palette.colors.enumerated() {
             let v = SwatchView(color: color)
             v.toolTip = "\(Palette.names[i]) (\(i + 1))"
-            v.onClick = { Settings.shared.colorIndex = i }
+            v.onClick = { [weak self] in
+                Settings.shared.colorIndex = i
+                self?.controller?.setDrawing(true)
+            }
             swatches.append(v)
             stack.addArrangedSubview(v)
         }
         stack.addArrangedSubview(separator())
 
+        pointerButton = iconButton("cursorarrow", tip: "Mouse: click through, keep the ink (M)", action: #selector(pointerTapped))
+        stack.addArrangedSubview(pointerButton)
         for (i, tool) in Tool.allCases.enumerated() {
             let b = iconButton(tool.symbol, tip: "\(tool.title) (\(tool.key.uppercased()))", action: #selector(toolTapped(_:)))
             b.tag = i
@@ -136,7 +142,10 @@ final class ToolbarPanel: NSPanel {
         for (width, diameter) in [(CGFloat(3), CGFloat(4)), (6, 7), (12, 11)] {
             let v = SizeDotView(width: width, diameter: diameter)
             v.toolTip = "Stroke size ([ and ], or scroll)"
-            v.onClick = { Settings.shared.width = width }
+            v.onClick = { [weak self] in
+                Settings.shared.width = width
+                self?.controller?.setDrawing(true)
+            }
             sizeDots.append(v)
             stack.addArrangedSubview(v)
         }
@@ -203,11 +212,13 @@ final class ToolbarPanel: NSPanel {
     func refresh() {
         let s = Settings.shared
         for (i, v) in swatches.enumerated() { v.isSelected = i == s.colorIndex }
-        for (tool, b) in toolButtons {
-            let selected = tool == s.tool
+        let pointer = controller?.mode == .pointer
+        func mark(_ b: NSButton, _ selected: Bool) {
             b.layer?.backgroundColor = selected ? NSColor.white.withAlphaComponent(0.18).cgColor : nil
             b.contentTintColor = selected ? .white : NSColor.white.withAlphaComponent(0.7)
         }
+        mark(pointerButton, pointer)
+        for (tool, b) in toolButtons { mark(b, !pointer && tool == s.tool) }
         let nearest = sizeDots.min { abs($0.width - s.width) < abs($1.width - s.width) }
         for v in sizeDots { v.isSelected = v === nearest && abs(v.width - s.width) < 2 }
         fadeButton.layer?.backgroundColor = s.fadeEnabled ? NSColor.systemYellow.withAlphaComponent(0.25).cgColor : nil
@@ -216,6 +227,7 @@ final class ToolbarPanel: NSPanel {
 
     func show(on screen: NSScreen) {
         refresh()
+        if isVisible { return } // keep wherever the user dragged it
         let size = frame.size
         let vf = screen.visibleFrame
         var origin = NSPoint(x: vf.midX - size.width / 2, y: vf.maxY - size.height - 10)
@@ -233,7 +245,11 @@ final class ToolbarPanel: NSPanel {
         orderOut(nil)
     }
 
-    @objc private func toolTapped(_ sender: NSButton) { Settings.shared.tool = Tool.allCases[sender.tag] }
+    @objc private func pointerTapped() { controller?.togglePointer() }
+    @objc private func toolTapped(_ sender: NSButton) {
+        Settings.shared.tool = Tool.allCases[sender.tag]
+        controller?.setDrawing(true)
+    }
     @objc private func fadeTapped() { Settings.shared.fadeEnabled.toggle() }
     @objc private func undoTapped() { controller?.undo() }
     @objc private func clearTapped() { controller?.clearAll() }

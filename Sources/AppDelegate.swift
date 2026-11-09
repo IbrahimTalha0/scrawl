@@ -10,7 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         overlay = OverlayController()
-        overlay.onDrawingChanged = { [weak self] _ in self?.updateStatusIcon() }
+        overlay.onModeChanged = { [weak self] _ in self?.updateStatusIcon() }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         menu.delegate = self
@@ -25,7 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    // MARK: URL scheme: scrawl://toggle | start | stop | clear | undo
+    // MARK: URL scheme: scrawl://toggle | start | stop | mouse | clear | undo
 
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls where url.scheme?.lowercased() == "scrawl" {
@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case "toggle": overlay.toggle()
             case "start", "on": overlay.setDrawing(true)
             case "stop", "off": overlay.setDrawing(false)
+            case "mouse", "pointer": overlay.setMode(.pointer)
             case "clear": overlay.clearAll()
             case "undo": overlay.undo()
             default: break
@@ -60,7 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: Status item
 
     private func updateStatusIcon() {
-        let name = overlay.isDrawing ? "pencil.tip.crop.circle.fill" : "pencil.tip.crop.circle"
+        let name = overlay.mode == .off ? "pencil.tip.crop.circle" : "pencil.tip.crop.circle.fill"
         let image = NSImage(systemSymbolName: name, accessibilityDescription: "Scrawl")
         image?.isTemplate = true
         statusItem.button?.image = image
@@ -72,10 +73,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let s = Settings.shared
         let preset = s.shortcut
 
-        let toggle = item(overlay.isDrawing ? "Stop Drawing" : "Start Drawing", #selector(toggleDrawing))
+        let toggleTitle: String
+        switch overlay.mode {
+        case .off: toggleTitle = "Start Drawing"
+        case .drawing: toggleTitle = "Stop Drawing"
+        case .pointer: toggleTitle = "Resume Drawing"
+        }
+        let toggle = item(toggleTitle, #selector(toggleDrawing))
         toggle.keyEquivalent = preset.key
         toggle.keyEquivalentModifierMask = preset.flags
         menu.addItem(toggle)
+        if overlay.mode == .pointer {
+            menu.addItem(item("Stop Drawing", #selector(stopDrawing)))
+        }
 
         let clear = item("Clear Drawings", #selector(clearAll))
         clear.keyEquivalent = "c"
@@ -179,6 +189,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Let the menu finish closing before we take over the screen.
         DispatchQueue.main.async { self.overlay.toggle() }
     }
+    @objc private func stopDrawing() { overlay.setDrawing(false) }
     @objc private func clearAll() { overlay.clearAll() }
     @objc private func selectTool(_ sender: NSMenuItem) { Settings.shared.tool = Tool.allCases[sender.tag] }
     @objc private func selectColor(_ sender: NSMenuItem) { Settings.shared.colorIndex = sender.tag }
@@ -213,10 +224,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert.messageText = "Scrawl Shortcuts"
         alert.informativeText = """
         Global
-          \(p.display)    Start / stop drawing
+          \(p.display)    Start / stop drawing (from mouse mode: back to drawing)
           \(p.clearDisplay)    Clear all drawings
 
         While drawing
+          M    Mouse mode: click through, ink and toolbar stay
           P  H  L  A  R  O    Pen, Highlighter, Line, Arrow, Rectangle, Ellipse
           1 – 8    Red, Orange, Yellow, Green, Blue, Purple, White, Black
           [  ]  or scroll    Thinner / thicker
